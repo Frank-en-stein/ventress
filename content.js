@@ -7,10 +7,12 @@ let isExtensionEnabled = true;
 let isOverlayActive = false;
 let currentVideoId = null;
 let currentPlaylistId = null;
+let isAutoplayEnabled = true;
 
 // Load the extension state
-chrome.storage.sync.get('isEnabled', function(data) {
+chrome.storage.sync.get(['isEnabled', 'autoplay'], function(data) {
   isExtensionEnabled = data.isEnabled !== false; // Default to true if not set
+  isAutoplayEnabled = data.autoplay !== false; // Default to true if not set
   if (isExtensionEnabled) {
     if (location.href.includes('youtube.com/watch')) {
       waitForVideoPlayer().then(createOverlay);
@@ -125,6 +127,11 @@ window.addEventListener('message', function(event) {
 });
 
 function playNextVideo() {
+  if (!isAutoplayEnabled) {
+    removeOverlay();
+    return;
+  }
+
   if (currentPlaylistId) {
     const nextVideoElement = findNextPlaylistVideo();
     if (nextVideoElement) {
@@ -269,6 +276,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       removeOverlay();
     }
+    sendResponse({ success: true });
+  } else if (request.action === "setAutoplay") {
+    isAutoplayEnabled = request.autoplay;
     sendResponse({ success: true });
   }
 });

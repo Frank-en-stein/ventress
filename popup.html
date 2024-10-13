@@ -54,17 +54,31 @@
     input:checked + .slider:before {
       transform: translateX(26px);
     }
+    .toggle-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
   <h1>YouTube Overlay Player</h1>
   <p>Overlays YouTube videos with a cookie-free player and allows dismissal.</p>
-  <label class="switch">
-    <input type="checkbox" id="enableSwitch">
-    <span class="slider"></span>
-  </label>
-  <span id="statusText">Enabled</span>
-
+  <div class="toggle-container">
+    <span>Enable Extension:</span>
+    <label class="switch">
+      <input type="checkbox" id="enableSwitch">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="toggle-container">
+    <span>Autoplay:</span>
+    <label class="switch">
+      <input type="checkbox" id="autoplaySwitch">
+      <span class="slider"></span>
+    </label>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>
