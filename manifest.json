@@ -1,8 +1,11 @@
 {
   "manifest_version": 3,
   "name": "YouTube Overlay Player",
-  "version": "2.5",
+  "version": "1.0",
   "description": "Overlays YouTube videos with a cookie-free player and allows dismissal",
+  "icons": {
+    "128": "icons/icon.jpg"
+  },
   "permissions": [
     "activeTab",
     "storage"
@@ -10,14 +13,16 @@
   "host_permissions": [
     "https://www.youtube.com/*"
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/icon.jpg"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["content.js"],
-      "css": ["content.css"]
+      "js": ["content.js"]
     }
-  ],
-  "action": {
-    "default_popup": "popup.html"
-  }
+  ]
 }

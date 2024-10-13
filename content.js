@@ -8,6 +8,7 @@ let isOverlayActive = false;
 let currentVideoId = null;
 let currentPlaylistId = null;
 let isAutoplayEnabled = true;
+let autoplayTimeout = null;
 
 // Load the extension state
 chrome.storage.sync.get(['isEnabled', 'autoplay'], function(data) {
@@ -48,16 +49,45 @@ function createOverlay() {
     
     overlayContainer = document.createElement('div');
     overlayContainer.id = 'custom-overlay-container';
+    overlayContainer.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: black;
+      z-index: 1000;
+    `;
     videoPlayer.appendChild(overlayContainer);
     
     const closeButton = document.createElement('button');
     closeButton.id = 'custom-overlay-close';
     closeButton.innerHTML = '&times;';
+    closeButton.style.cssText = `
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: white;
+      border: none;
+      font-size: 20px;
+      padding: 5px 10px;
+      cursor: pointer;
+      z-index: 1001;
+    `;
     closeButton.onclick = removeOverlay;
     overlayContainer.appendChild(closeButton);
     
     overlayPlayer = document.createElement('iframe');
     overlayPlayer.id = 'custom-overlay-player';
+    overlayPlayer.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    `;
     let src = `https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=1&enablejsapi=1&origin=${window.location.origin}&widgetid=1`;
     if (currentPlaylistId) {
       src += `&list=${currentPlaylistId}`;
@@ -65,8 +95,6 @@ function createOverlay() {
     overlayPlayer.src = src;
     overlayPlayer.allow = "autoplay; fullscreen";
     overlayContainer.appendChild(overlayPlayer);
-
-    updateOverlaySize();
 
     if (resizeObserver) {
       resizeObserver.disconnect();
@@ -82,13 +110,11 @@ function createOverlay() {
 }
 
 function updateOverlaySize() {
-  const videoPlayer = document.querySelector('#movie_player');
-  if (videoPlayer && overlayContainer) {
-    overlayContainer.style.position = 'absolute';
-    overlayContainer.style.top = '0';
-    overlayContainer.style.left = '0';
-    overlayContainer.style.width = '100%';
-    overlayContainer.style.height = '100%';
+  if (overlayContainer) {
+    const videoPlayer = document.querySelector('#movie_player');
+    const rect = videoPlayer.getBoundingClientRect();
+    overlayContainer.style.width = `${rect.width}px`;
+    overlayContainer.style.height = `${rect.height}px`;
   }
 }
 
@@ -116,7 +142,14 @@ window.addEventListener('message', function(event) {
           const currentTime = data.info.currentTime;
           const duration = data.info.duration;
           if (duration - currentTime <= 1 || currentTime >= duration) {
-            playNextVideo();
+            if (isAutoplayEnabled) {
+              // Clear any existing timeout
+              if (autoplayTimeout) {
+                clearTimeout(autoplayTimeout);
+              }
+              // Set a new timeout to play the next video
+              autoplayTimeout = setTimeout(playNextVideo, 1000);
+            }
           }
         }
       }
@@ -196,6 +229,10 @@ function removeOverlay() {
       clearInterval(checkInterval);
       checkInterval = null;
     }
+    if (autoplayTimeout) {
+      clearTimeout(autoplayTimeout);
+      autoplayTimeout = null;
+    }
     isOverlayActive = false;
     hideOriginalVideo(false);
   }
@@ -208,10 +245,10 @@ function hideOriginalVideo(hide) {
     newStyle.id = 'youtube-overlay-style';
     newStyle.textContent = `
       #movie_player video {
-        display: none !important;
+        visibility: hidden !important;
       }
       .html5-video-player .video-stream {
-        display: none !important;
+        visibility: hidden !important;
       }
     `;
     document.head.appendChild(newStyle);
