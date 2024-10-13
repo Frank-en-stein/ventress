@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "YouTube Overlay Player",
-  "version": "2.4",
+  "version": "2.5",
   "description": "Overlays YouTube videos with a cookie-free player and allows dismissal",
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "storage"
   ],
   "host_permissions": [
     "https://www.youtube.com/*"
@@ -16,5 +17,7 @@
       "css": ["content.css"]
     }
   ],
-  "action": {}
+  "action": {
+    "default_popup": "popup.html"
+  }
 }

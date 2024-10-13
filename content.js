@@ -3,48 +3,46 @@ let originalVideo = null;
 let overlayPlayer = null;
 let resizeObserver = null;
 let checkInterval = null;
+let isExtensionEnabled = true;
+let isOverlayActive = false;
+let currentVideoId = null;
+let currentPlaylistId = null;
 
-// Immediately inject a style to hide the video player
-const style = document.createElement('style');
-style.textContent = `
-  #movie_player video {
-    display: none !important;
+// Load the extension state
+chrome.storage.sync.get('isEnabled', function(data) {
+  isExtensionEnabled = data.isEnabled !== false; // Default to true if not set
+  if (isExtensionEnabled) {
+    if (location.href.includes('youtube.com/watch')) {
+      waitForVideoPlayer().then(createOverlay);
+    }
   }
-  .html5-video-player .video-stream {
-    display: none !important;
-  }
-`;
-document.head.appendChild(style);
+});
 
 // Function to intercept play attempts
 function interceptPlayAttempts() {
+  if (!isExtensionEnabled || !isOverlayActive) return;
+
   const videoElement = document.querySelector('video');
   if (videoElement) {
     videoElement.pause();
     videoElement.currentTime = 0;
     videoElement.preload = 'none';
     videoElement.autoplay = false;
-    videoElement.setAttribute('data-intercepted', 'true');
-    
-    // Prevent future play attempts
-    videoElement.addEventListener('play', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      this.pause();
-    }, true);
   }
 }
 
-// Run interception immediately and periodically
-interceptPlayAttempts();
+// Run interception periodically
 setInterval(interceptPlayAttempts, 100);
 
 function createOverlay() {
+  if (!isExtensionEnabled) return;
+
   const videoPlayer = document.querySelector('#movie_player');
   if (videoPlayer && !overlayContainer) {
     originalVideo = videoPlayer.querySelector('video');
     
-    const videoId = getVideoId();
+    currentVideoId = getVideoId();
+    currentPlaylistId = getPlaylistId();
     
     overlayContainer = document.createElement('div');
     overlayContainer.id = 'custom-overlay-container';
@@ -58,7 +56,11 @@ function createOverlay() {
     
     overlayPlayer = document.createElement('iframe');
     overlayPlayer.id = 'custom-overlay-player';
-    overlayPlayer.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${window.location.origin}&widgetid=1`;
+    let src = `https://www.youtube-nocookie.com/embed/${currentVideoId}?autoplay=1&enablejsapi=1&origin=${window.location.origin}&widgetid=1`;
+    if (currentPlaylistId) {
+      src += `&list=${currentPlaylistId}`;
+    }
+    overlayPlayer.src = src;
     overlayPlayer.allow = "autoplay; fullscreen";
     overlayContainer.appendChild(overlayPlayer);
 
@@ -71,6 +73,9 @@ function createOverlay() {
     resizeObserver.observe(videoPlayer);
 
     startVideoEndCheck();
+    
+    isOverlayActive = true;
+    hideOriginalVideo(true);
   }
 }
 
@@ -120,6 +125,18 @@ window.addEventListener('message', function(event) {
 });
 
 function playNextVideo() {
+  if (currentPlaylistId) {
+    const nextVideoElement = findNextPlaylistVideo();
+    if (nextVideoElement) {
+      const nextVideoUrl = nextVideoElement.href;
+      if (nextVideoUrl) {
+        window.location.href = nextVideoUrl;
+        return;
+      }
+    }
+  }
+  
+  // If we're here, either there's no playlist, or the playlist has ended
   const nextVideoElement = findTopRecommendedVideo();
   if (nextVideoElement && nextVideoElement.href) {
     window.location.href = nextVideoElement.href;
@@ -128,14 +145,30 @@ function playNextVideo() {
   }
 }
 
+function findNextPlaylistVideo() {
+  const playlistItems = document.querySelectorAll('ytd-playlist-panel-video-renderer');
+  let currentFound = false;
+  for (let item of playlistItems) {
+    const videoIdElement = item.querySelector('#wc-endpoint');
+    if (videoIdElement) {
+      const videoId = new URLSearchParams(videoIdElement.href.split('?')[1]).get('v');
+      if (currentFound) {
+        return videoIdElement;
+      }
+      if (videoId === currentVideoId) {
+        currentFound = true;
+      }
+    }
+  }
+  return null;
+}
+
 function findTopRecommendedVideo() {
-  // Look for the first recommended video in the sidebar
   const recommendedVideos = document.querySelectorAll('ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer');
   if (recommendedVideos.length > 0) {
     return recommendedVideos[0].querySelector('a#thumbnail');
   }
   
-  // Fallback to the "Up Next" video if available
   const upNext = document.querySelector('.ytp-upnext-url');
   if (upNext) {
     return upNext;
@@ -156,12 +189,38 @@ function removeOverlay() {
       clearInterval(checkInterval);
       checkInterval = null;
     }
+    isOverlayActive = false;
+    hideOriginalVideo(false);
+  }
+}
+
+function hideOriginalVideo(hide) {
+  const style = document.getElementById('youtube-overlay-style');
+  if (hide && !style) {
+    const newStyle = document.createElement('style');
+    newStyle.id = 'youtube-overlay-style';
+    newStyle.textContent = `
+      #movie_player video {
+        display: none !important;
+      }
+      .html5-video-player .video-stream {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(newStyle);
+  } else if (!hide && style) {
+    style.remove();
   }
 }
 
 function getVideoId() {
   const urlParams = new URLSearchParams(window.location.search);
   return urlParams.get('v');
+}
+
+function getPlaylistId() {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('list');
 }
 
 document.addEventListener('keydown', (event) => {
@@ -199,7 +258,17 @@ function waitForVideoPlayer() {
   });
 }
 
-// Run createOverlay immediately when the script loads
-if (location.href.includes('youtube.com/watch')) {
-  waitForVideoPlayer().then(createOverlay);
-}
+// Listen for messages from the popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "setState") {
+    isExtensionEnabled = request.isEnabled;
+    if (isExtensionEnabled) {
+      if (location.href.includes('youtube.com/watch')) {
+        waitForVideoPlayer().then(createOverlay);
+      }
+    } else {
+      removeOverlay();
+    }
+    sendResponse({ success: true });
+  }
+});
